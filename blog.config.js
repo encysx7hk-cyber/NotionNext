@@ -18,7 +18,7 @@ const BLOG = {
 
 　AUTHOR: 'Mirai AI Lab', // そのままでもOKですが、'Mirai AI Lab' と大文字にするとより公式感が出ます
   BIO: 'つくばみらい市から、AIの今と未来を思考する。', // 特定の職業を伏せ、知的な「観測者」として定義
-  LINK: 'https://mirai-ai-lab.pages.dev', 
+  LINK: 'https://mirai-ai-radio.pages.dev',
   KEYWORDS: 'AI, 生成AI, つくばみらい市, 技術, デジタル', // 教育関連を外し、現在のコンテンツに最適化
   BLOG_FAVICON: '/favicon.ico',
 
