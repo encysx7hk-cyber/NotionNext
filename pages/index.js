@@ -8,80 +8,64 @@ import { DynamicLayout } from '@/themes/theme'
 import { generateRedirectJson } from '@/lib/redirect'
 import { checkDataFromAlgolia } from '@/lib/plugins/algolia'
 
-/**
- * 首页布局
- * @param {*} props
- * @returns
- */
 const Index = props => {
   const theme = siteConfig('THEME', BLOG.THEME, props.NOTION_CONFIG)
   return <DynamicLayout theme={theme} layoutName='LayoutIndex' {...props} />
 }
 
-/**
- * SSG 获取数据
- * @returns
- */
 export async function getStaticProps(req) {
   const { locale } = req
   const from = 'index'
-  const props = await getGlobalData({ from, locale })
-  const POST_PREVIEW_LINES = siteConfig(
-    'POST_PREVIEW_LINES',
-    12,
-    props?.NOTION_CONFIG
-  )
-  props.posts = props.allPages?.filter(
-    page => page.type === 'Post' && page.status === 'Published'
-  )
+  
+  // 1. データの取得
+  const rawData = await getGlobalData({ from, locale })
 
-  // 处理分页
-  if (siteConfig('POST_LIST_STYLE') === 'scroll') {
-    // 滚动列表默认给前端返回所有数据
-  } else if (siteConfig('POST_LIST_STYLE') === 'page') {
-    props.posts = props.posts?.slice(
-      0,
-      siteConfig('POSTS_PER_PAGE', 12, props?.NOTION_CONFIG)
-    )
+  // 2. 浄化ロジック (サーバーサイドに隔離)
+  const sanitizeAnything = (obj) => {
+    return JSON.parse(JSON.stringify(obj, (key, value) => {
+      const dateKeys = ['date', 'publishDate', 'lastEditedTime', 'start_date']
+      if (dateKeys.includes(key)) {
+        if (!value) return undefined
+        const d = new Date(value)
+        return isNaN(d.getTime()) ? undefined : d.toISOString()
+      }
+      return value
+    }))
   }
 
-  // 预览文章内容
+  const props = sanitizeAnything(rawData)
+
+  // 3. 投稿データの抽出
+  const POST_PREVIEW_LINES = siteConfig('POST_PREVIEW_LINES', 12, props?.NOTION_CONFIG)
+  props.posts = props.allPages?.filter(p => p.type === 'Post' && p.status === 'Published') || []
+
+  if (siteConfig('POST_LIST_STYLE') === 'page') {
+    props.posts = props.posts.slice(0, siteConfig('POSTS_PER_PAGE', 12, props?.NOTION_CONFIG))
+  }
+
   if (siteConfig('POST_LIST_PREVIEW', false, props?.NOTION_CONFIG)) {
-    for (const i in props.posts) {
-      const post = props.posts[i]
-      if (post.password && post.password !== '') {
-        continue
-      }
+    for (const post of props.posts) {
+      if (post.password) continue
       post.blockMap = await getPostBlocks(post.id, 'slug', POST_PREVIEW_LINES)
     }
   }
 
-  // 生成robotTxt
-  generateRobotsTxt(props)
-  // 生成Feed订阅
-  generateRss(props)
-  // 生成
-  generateSitemapXml(props)
-  // 检查数据是否需要从algolia删除
+  // 4. 静的ファイル生成（失敗してもビルドを止めない）
+  const tryGenerate = (fn) => { try { fn(props) } catch (e) { console.error(e) } }
+  tryGenerate(generateRobotsTxt)
+  tryGenerate(generateRss)
+  tryGenerate(generateSitemapXml)
+  
   checkDataFromAlgolia(props)
   if (siteConfig('UUID_REDIRECT', false, props?.NOTION_CONFIG)) {
-    // 生成重定向 JSON
-    generateRedirectJson(props)
+    tryGenerate(generateRedirectJson)
   }
-
-  // 生成全文索引 - 仅在 yarn build 时执行 && process.env.npm_lifecycle_event === 'build'
 
   delete props.allPages
 
   return {
     props,
-    revalidate: process.env.EXPORT
-      ? undefined
-      : siteConfig(
-          'NEXT_REVALIDATE_SECOND',
-          BLOG.NEXT_REVALIDATE_SECOND,
-          props.NOTION_CONFIG
-        )
+    revalidate: process.env.EXPORT ? undefined : siteConfig('NEXT_REVALIDATE_SECOND', BLOG.NEXT_REVALIDATE_SECOND, props.NOTION_CONFIG)
   }
 }
 
